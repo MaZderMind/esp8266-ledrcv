@@ -10,11 +10,7 @@ WiFiUDP Udp;
 uint8_t packetSize = 0;
 uint8_t packetBuffer[0x0FF];
 
-static const int16_t ledPin = 13;
-static const int16_t indicatorPin = 2;
-
-Adafruit_NeoPixel pixels =
-    Adafruit_NeoPixel(numLeds, ledPin, NEO_GRB + NEO_KHZ800);
+static const uint8_t indicatorPin = 2;
 
 static void setupIndicator() {
   pinMode(indicatorPin, OUTPUT);
@@ -93,21 +89,25 @@ bool readUdpPacket() {
   return packetSize > 0;
 }
 
-void setColors() {
+void setColors(uint8_t stripIndex) {
   uint8_t numPixelsInPacket = (packetSize - 1) / 3;
+  uint16_t numLeds = ledStrips[stripIndex].numPixels();
   uint8_t numPixels = numPixelsInPacket < numLeds ? numPixelsInPacket : numLeds;
+
   if (debugCommunication) {
-    Serial.printf("numPixelsInPacket = %u\n", numPixelsInPacket);
-    Serial.printf("numLeds = %u\n", numLeds);
-    Serial.printf("numPixels = %u\n", numPixels);
+    Serial.println("setColors");
+    Serial.printf("  numPixelsInPacket = %u\n", numPixelsInPacket);
+    Serial.printf("  numPixelsInPacket = %u\n", numPixelsInPacket);
+    Serial.printf("  numLeds = %u\n", numLeds);
+    Serial.printf("  numPixels = %u\n", numPixels);
   }
 
   // TODO check if buffer size does match
   for (size_t i = 0; i < numPixels; i++) {
     uint8_t offset = i * 3 + 1;
     if (debugCommunication) {
-      Serial.printf("Pixel %u\n", i);
-      Serial.printf("  Offset = %u\n", offset);
+      Serial.printf("    pixel %u\n", i);
+      Serial.printf("    offset = %u\n", offset);
     }
 
     uint8_t r = packetBuffer[offset + 0];
@@ -115,43 +115,46 @@ void setColors() {
     uint8_t b = packetBuffer[offset + 2];
 
     if (debugCommunication) {
-      Serial.printf("  RGB %X %X %X\n", r, g, b);
+      Serial.printf("    RGB %X %X %X\n", r, g, b);
     }
-    pixels.setPixelColor(i, r, g, b);
+    ledStrips[stripIndex].setPixelColor(i, r, g, b);
   }
 }
 
 void processCommand() {
   Serial.print(F("Executing Command "));
-  Serial.printf("%02X\n", packetBuffer[0]);
-  switch (packetBuffer[0]) {
-  case 0x00: // Black Out
+  uint8_t command = packetBuffer[0];
+  Serial.printf("%02X\n", command);
+  if (command == 0x00) { // Black Out
     Serial.println(F("Black Out"));
-    pixels.clear();
-    pixels.show();
-    break;
-
-  case 0x01: // Set Colors
-    Serial.println(F("Set Colors"));
-    setColors();
-    break;
-
-  case 0x11: // Set Colors Immediate
-    Serial.println(F("Set Colors Immediate"));
-    setColors();
-    pixels.show();
-    break;
-
-  case 0xFF: // Show
+    for (uint8_t stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+      ledStrips[stripIndex].clear();
+      ledStrips[stripIndex].show();
+    }
+  } else if (command >= 0x01 && command <= 0x09) { // Set Colors
+    uint8_t stripIndex = command - 0x01;
+    Serial.print(F("Set Colors for Strip "));
+    Serial.println(stripIndex);
+    setColors(stripIndex);
+  } else if (command >= 0x11 && command <= 0x19) { // Set Colors Immediate
+    uint8_t stripIndex = command - 0x11;
+    Serial.print(F("Set Colors Immediate for Strip "));
+    Serial.println(stripIndex);
+    setColors(stripIndex);
+    ledStrips[stripIndex].show();
+  } else if (command == 0xFF) { // Show
     Serial.println(F("Show"));
-    pixels.show();
-    break;
+    for (uint8_t stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+      ledStrips[stripIndex].show();
+    }
   }
 }
 
 void setupLeds() {
-  Serial.print(F("Setting up LED-Strip"));
-  pixels.begin();
+  Serial.println(F("Setting up LED-Strips"));
+  for (uint8_t stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    ledStrips[stripIndex].begin();
+  }
 }
 
 void setup() {
